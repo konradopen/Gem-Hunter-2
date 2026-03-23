@@ -13,7 +13,14 @@
 
 # misc
 .DS_Store
+Thumbs.db
 *.pem
+*.p12
+*.pfx
+*.der
+*.crt
+*.cer
+*.key
 
 # debug
 npm-debug.log*
@@ -22,6 +29,7 @@ yarn-error.log*
 
 # env files (Ignore all except the example)
 .env
+.env.*
 .env.local
 .env.development.local
 .env.test.local
@@ -40,6 +48,12 @@ database.sqlite
 database.sqlite-journal
 database.sqlite-wal
 database.sqlite-shm
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3
+*.db
 
 # n8n persistent data
 n8n_data/
@@ -56,3 +70,12 @@ launcher/*.spec
 # Compiled executables
 GemHunter.exe
 launcher/GemHunter.exe
+
+# SSH keys / credentials (project should never contain these)
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+
+# temporary clone of gemhunter v1 - remove if its not there anymore.
+/temp_v1/
