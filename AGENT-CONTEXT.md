@@ -1,5 +1,7 @@
 # Gem Hunter — Agent Context
 
+## Info to the Agent: if you haven't, read @AGENT-MEMORY.md and @SCHEDULE.md.
+
 > Gem Hunter is a self-hosted, local-first job discovery and AI scoring app.
 > This file tells the coding agent what the project is, how it works, and how to help build it.
 
@@ -10,7 +12,7 @@
 - Purpose: A personal hobby project aimed at evolving programming skills. Pull Requests and community contributions are highly welcome!
 - Target Audience: Tech-adjacent job seekers. For version 1, this project specifically targets the **Polish job market**.
 - Goal: Automate job discovery, filter it extensively to save API costs, score it against a CV with AI, and let the user review it through a fast swipe interface.
-- Status: Week 1 of a 12-week build plan. Foundation setup is in progress.
+- Status: Week 5 of a 12-week build plan. Foundation and Launcher setup are complete.
 
 ## Product Vision
 
@@ -193,7 +195,18 @@ When requirements are unclear, prefer:
 - Working feature over speculative optimization.
 - Explicit naming over terse naming.
 
+### ⚠️ IMPORTANT: DOCUMENTATION & VERSIONING
+This project uses bleeding-edge versions: Next.js 16 (App Router), React 19, HeroUI v3, and Tailwind v4. The underlying LLM training data is OUTDATED regarding these major versions.
+
+**At the beginning of EVERY new session, the Agent MUST:**
+1. Acknowledge this version discrepancy.
+2. Immediately use the attached MCP tools (`context7` for Next.js/React docs, `heroui` for HeroUI v3 docs, `github` to search source codes) to fetch the exact API definitions or Component documentation relevant to the current task.
+3. NEVER GUESS an API or import structure for these libraries. Always read the docs first.
+
+
 ## Build Phases
+
+> **Note:** For the granular, day-by-day task checklist, please refer to `SCHEDULE.md`.
 
 | Phase | Scope | Weeks |
 |---|---|---|
@@ -205,7 +218,7 @@ When requirements are unclear, prefer:
 
 ## Definition of Done for v1
 
-- [ ] App starts from `GemHunter.exe` with one double-click and opens in the browser.
+- [x] App starts from `GemHunter.exe` with one double-click and opens in the browser.
 - [ ] Onboarding extracts CV text from a standard PDF and saves all settings.
 - [ ] Filters are easily changed in the UI and apply instantly to local database without re-scraping.
 - [ ] Worker pipeline runs asynchronously, executing the multi-stage filter pipeline.

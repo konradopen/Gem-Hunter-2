@@ -1,7 +1,7 @@
 # 💎 Gem Hunter
 
 > A self-hosted, local-first job discovery and AI scoring app designed to find your next great role with zero repetitive work.
-> 
+>
 > **Note:** This is primarily a personal hobby project aimed at evolving my programming skills, but I'm building it in public!
 
 Gem Hunter automates the tedious parts of job hunting. It searches for jobs in the background, filters them, scores them against your CV using AI (OpenAI, Gemini, or DeepSeek), and presents the best matches in a fast, swipeable interface.
@@ -10,20 +10,50 @@ Gem Hunter automates the tedious parts of job hunting. It searches for jobs in t
 
 ## 🛑 Prerequisites
 
-Gem Hunter is a local-first application. To ensure your data stays private and the app runs smoothly, it relies on a local background worker. 
-
 ### Docker Desktop
 The background worker that scrapes and processes jobs requires **Docker Desktop** to be installed and running on your machine.
-*   Download and install [Docker Desktop](https://www.docker.com/products/docker-desktop/).
-*   Make sure Docker is running before launching Gem Hunter.
+
+- Download and install Docker Desktop: https://www.docker.com/products/docker-desktop/
+- Make sure Docker is running before launching Gem Hunter.
+
+### Node.js
+You need Node.js to run the Next.js app locally (Phase 1). Any reasonably recent Node 20+ should work.
+
+---
+
+## ⚡ Quickstart (Development)
+
+From the repo root:
+
+1) Start the background worker (n8n):
+- `docker compose up -d`
+
+2) Install deps and run the app:
+- `npm install`
+- `npm run dev`
+
+Open:
+- App: http://localhost:3000
+- n8n UI: http://localhost:5678
+
+---
+
+## 🔌 Ports
+
+| Service | URL |
+|---|---|
+| Next.js app | http://localhost:3000 |
+| n8n UI | http://localhost:5678 |
 
 ---
 
 ## 🎯 Target Market (v1)
 
 For version 1, this project specifically targets the **Polish job market**. We are utilizing the sitemaps provided by:
-*   [JustJoin.it](https://justjoin.it/robots.txt)
-*   [RocketJobs.pl](https://rocketjobs.pl/robots.txt)
+- https://justjoin.it/robots.txt
+- https://rocketjobs.pl/robots.txt
+
+---
 
 ## ✨ How It Works
 
@@ -36,43 +66,80 @@ Gem Hunter is designed to save API credits and your time by using a highly effic
 5. **Second Hard Filtering:** We run regex and keyword filters again, this time against the newly fetched full job descriptions.
 6. **First AI Pass (Scoring):** We use a cost-effective LLM to score the remaining, highly-targeted jobs (0-100) against your uploaded CV.
 7. **Casino Screen:** You review the AI-scored matches one at a time with a fast, swipe-style interface and save your favorites as "Gems".
-8. **Second AI Pass (Premium):** For your saved Gems, you can manually trigger a heavier, more expensive AI model (like GPT-5.4 or Gemini 3.1 Pro) to generate a highly personalized recruiter message and a custom "summary" section for your CV tailored perfectly to that specific offer.
+8. **Second AI Pass (Premium):** For your saved Gems, you can manually trigger a heavier, more expensive AI model to generate a highly personalized recruiter message and a custom "summary" section for your CV tailored perfectly to that specific offer.
+
+---
+
+## 🗄️ Database (SQLite) & Drizzle migrations
+
+The app uses a local SQLite file:
+- `database.sqlite` (repo root)
+
+Schema lives in:
+- `src/db/schema.ts`
+
+When you change the schema (or start from a fresh DB), run:
+
+- `npx drizzle-kit generate`
+- `npx drizzle-kit migrate`
+
+Tip: a quick DB smoke test endpoint exists:
+- `GET http://localhost:3000/api/health/db`
+
+---
+
+## 🤖 n8n (Background Worker)
+
+n8n runs in Docker via `docker-compose.yml`.
+
+### First run
+When you open http://localhost:5678 for the first time, n8n may ask you to create a local owner/admin user (onboarding).
+This configuration is stored locally in:
+- `./n8n_data`
+
+### Persisted volumes
+This repo mounts:
+- `./n8n_data` → n8n config/workflows
+- `./database.sqlite` → the app database file inside the container at `/database.sqlite`
+
+---
 
 ## 🏗️ Architecture & Stack
 
-*   **Frontend / Controller:** Next.js (App Router), React, TypeScript
-*   **UI System:** HeroUI v3 & Tailwind CSS
-*   **Database:** Local SQLite (`database.sqlite`) via Drizzle ORM
-*   **Background Worker:** n8n Community Edition (running via Docker)
-*   **CV Parsing:** `pdf-parse`
-*   **Desktop Launcher:** Python + CustomTkinter + PyInstaller -> `GemHunter.exe`
+- **Frontend / Controller:** Next.js (App Router), React, TypeScript
+- **UI System:** HeroUI v3 & Tailwind CSS
+- **Database:** Local SQLite (`database.sqlite`) via Drizzle ORM
+- **Background Worker:** n8n Community Edition (running via Docker)
+- **CV Parsing:** `pdf-parse`
+- **Desktop Launcher:** Python + CustomTkinter + PyInstaller -> `GemHunter.exe`
+
+---
+
+## 🧯 Troubleshooting
+
+### Docker isn’t running
+Check:
+- `docker info`
+
+If it fails, start Docker Desktop and try again.
+
+### n8n doesn’t open on :5678
+Check containers:
+- `docker ps`
+Logs:
+- `docker logs -f n8n-gem-hunter`
+
+### App doesn’t open on :3000
+Run:
+- `npm run dev`
+
+---
 
 ## 🤝 Contributing
 
 Since this is a hobby project to level up my skills, I am totally open to Pull Requests! If you want to help out, suggest features, fix bugs, or just review some code, feel free to fork the repo and submit a PR. All help is welcome.
 
-## 🚀 Development Setup
-
-If you want to run the project from source:
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/wojciechsacewicz/gem-hunter-2.git
-   cd gem-hunter-2
-   ```
-
-2. Start the background worker (requires Docker):
-   ```bash
-   docker compose up -d
-   ```
-
-3. Install dependencies and start the Next.js app:
-   ```bash
-   npm install
-   npm run dev
-   ```
-
-4. Open `http://localhost:3000` in your browser. 
+---
 
 ## 📄 License
 

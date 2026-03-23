@@ -48,6 +48,11 @@ n8n_data/
 __pycache__/
 *.py[cod]
 *$py.class
+launcher/.venv/
 launcher/build/
 launcher/dist/
 launcher/*.spec
+
+# Compiled executables
+GemHunter.exe
+launcher/GemHunter.exe

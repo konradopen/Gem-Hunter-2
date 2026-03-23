@@ -19,7 +19,7 @@ export const jobs = sqliteTable("jobs", {
   salary_max: integer("salary_max"),
   currency: text("currency"),
   description: text("description"),
-  status: text("status").default("new"),
+  status: text("status").default("shallow"),
   ai_score: integer("ai_score"),
   ai_reason: text("ai_reason"),
   scraped_at: integer("scraped_at", { mode: "timestamp" }),
