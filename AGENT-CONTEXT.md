@@ -7,24 +7,30 @@
 
 - Repository: `wojciechsacewicz/gem-hunter-2` (public, building in public from commit one).
 - Type: Self-hosted, open-source desktop/web application.
-- Target Audience: Tech-adjacent job seekers (junior developers, IT folks, data analysts) willing to follow a setup tutorial (installing Docker, bypassing unsigned `.exe` warnings).
-- Goal: Automate job discovery, filter it, score it against a CV with AI, and let the user review it through a fast swipe interface.
+- Purpose: A personal hobby project aimed at evolving programming skills. Pull Requests and community contributions are highly welcome!
+- Target Audience: Tech-adjacent job seekers. For version 1, this project specifically targets the **Polish job market**.
+- Goal: Automate job discovery, filter it extensively to save API costs, score it against a CV with AI, and let the user review it through a fast swipe interface.
 - Status: Week 1 of a 12-week build plan. Foundation setup is in progress.
 
 ## Product Vision
 
-The app should help a job seeker find high-quality offers with as little repetitive work as possible.
+The app should help a job seeker find high-quality offers with as little repetitive work as possible, while being highly efficient with paid AI API credits.
 
 The desired end experience:
 1. Launch the app locally with one double-click.
-2. Complete onboarding once (AI provider, API key, CV upload, job filters).
-3. Press one button to trigger a background job search.
-4. Watch a progress bar fill as jobs are fetched and scored.
-5. Review the best offers one card at a time on the Casino Screen.
-6. Save good ones as gems.
-7. Optionally generate a personalized recruiter message for any saved gem.
+2. Complete onboarding once (AI provider, API key, CV upload, hard filters).
+3. The system works in a decoupled way: Scraping happens in the background, while Filtering is applied instantly.
+4. Review the best offers one card at a time on the Casino Screen.
+5. Save good ones as gems.
+6. Manually trigger a premium Second AI Pass to generate a tailored CV summary and recruiter message for the gems.
 
 The product should feel fast, visual, and motivating rather than heavy or over-engineered.
+
+## Target Job Boards (v1)
+
+We are utilizing the sitemaps provided by:
+- JustJoin.it (`justjoin.it/robots.txt` / sitemaps)
+- RocketJobs.pl (`rocketjobs.pl/robots.txt` / sitemaps)
 
 ## Stack
 
@@ -59,17 +65,17 @@ Stores exactly one configuration row. Every change performs an UPSERT on `id = 1
 | `active_llm` | TEXT | Selected provider: `gemini`, `openai`, or `deepseek` |
 | `api_key` | TEXT | API key for the selected provider |
 | `cv_text` | TEXT | Plain text extracted from the uploaded PDF |
-| `filters_json` | TEXT | Serialized JSON filters |
+| `filters_json` | TEXT | Serialized JSON filters (regex, locations, keywords), configurable in the UI |
 | `last_sync_status` | TEXT | Sync state: `idle`, `running`, `completed`, `failed` |
 
 Example `filters_json` value:
 ```json
-{"locations": ["Gdańsk", "Remote"], "min_salary": 6000, "keywords_must": ["React"]}
+{"locations": ["Gdańsk", "Remote"], "min_salary": 6000, "keywords_must": ["React"], "regex_exclude": "senior|lead"}
 ```
 
 ### Table: jobs
 
-Stores all discovered job offers and their AI scoring results.
+Stores all discovered job offers. Raw data (URL, full description) is kept so filters can be re-applied without re-scraping.
 
 | Field | Type | Purpose |
 |---|---|---|
@@ -81,135 +87,82 @@ Stores all discovered job offers and their AI scoring results.
 | `salary_min` | INT | Minimum salary |
 | `salary_max` | INT | Maximum salary |
 | `currency` | TEXT | Salary currency |
-| `description` | TEXT | HTML-stripped job description text |
-| `status` | TEXT | `unscored`, `new`, `gem`, `rejected`, `auto_rejected`, or `applied` |
+| `description` | TEXT | HTML-stripped full job description text (once deep scraped) |
+| `status` | TEXT | `shallow`, `rejected_shallow`, `deep`, `rejected_deep`, `unscored`, `new`, `gem`, `rejected_swipe`, `applied` |
 | `ai_score` | INT | AI match score 0–100 |
 | `ai_reason` | TEXT | Short LLM explanation of the score |
 | `scraped_at` | TIMESTAMP | Time the record was inserted |
 
-## Application Flow
+## Application Flow: Decoupled Scraping & Filtering
 
-### Step 1: Launch
+To save AI API credits and time, the pipeline uses a strict multi-stage funnel where **Scraping is completely decoupled from Filtering**.
 
-The Python launcher:
-1. Runs `docker info` silently to check Docker.
-2. Calls `docker compose up -d`.
-3. Polls `localhost:3000` until HTTP 200.
-4. Opens the default browser at `localhost:3000`.
+### Stage 1: UI-Driven Filtering (Instant, No Network)
+Filters (locations, regex, salary) are easily configurable in the Next.js UI.
+When a user updates their filters and clicks "Save":
+1. The app immediately updates `filters_json` in the `settings` table.
+2. A local Next.js script instantly re-evaluates all existing jobs in the database against the new filters.
+3. If a previously `rejected_shallow` job now matches (e.g., changed city from Warsaw to Gdańsk), its status upgrades back to `shallow` (ready for deep scrape).
+4. If a previously `rejected_deep` job now matches, it upgrades to `unscored` (ready for AI).
+5. **No network calls or re-scraping are needed.** The database is the vault.
 
-### Step 2: Onboarding (first run only)
-
-Next.js Middleware checks the `settings` table on every page load.
-If `settings` is empty, it blocks access to `/dashboard` and redirects to `/onboarding`.
-
-The onboarding wizard collects:
-- AI provider and API key.
-- A PDF CV file.
-- Hard filters (location, salary, keywords).
-
-The CV upload flow:
-1. Frontend sends the PDF to a Route Handler.
-2. The Route Handler uses `pdf-parse` to extract plain text and returns it to the client.
-3. The UI shows the text in a large editable textarea for the user to review and fix formatting.
-4. A Server Action saves the final edited result to `settings` via Drizzle UPSERT.
-5. The user is redirected to the empty dashboard.
-
-### Step 3: Search trigger
-
-The user clicks the "Search Gems" button on the dashboard.
-A Server Action updates `last_sync_status = 'running'` in the `settings` table and fires an HTTP POST to `http://localhost:5678/webhook/trigger-sync`.
-
-After triggering, Next.js starts polling every 2 seconds:
-```sql
--- Polls count of new jobs and the current run status
-SELECT COUNT(*) FROM jobs WHERE scraped_at > [click_timestamp];
-SELECT last_sync_status FROM settings;
-```
-
-The count drives the HeroUI Progress Bar animation, and when `last_sync_status` hits `'completed'`, the bar jumps to 100% and transitions to a success state.
-
-### Step 4: Worker pipeline (n8n, runs in background)
-
-When n8n receives the webhook, it runs this pipeline in order:
-
-1. Read context: `SELECT * FROM settings` — loads API key, CV text, and filters into workflow variables.
-2. Shallow scraping: HTTP GET to job board APIs/sitemaps using hard filters. Builds a URL list of up to ~500 offers.
-3. Ironclad deduplication: `SELECT url FROM jobs` — compares scraped URLs to existing DB entries. Drops all known URLs. Only passes through truly new ones (typically ~20).
-4. Immediate insert: Bulk `INSERT INTO jobs (url, title, ...)` with `status = 'unscored'`. This ensures fault tolerance.
-5. Processing Loop: For each `unscored` job:
-   - Deep scraping: HTTP GET the URL, extract the description div, strip HTML to plain text.
-   - AI scoring: Routes to the active provider based on `active_llm`. Uses this system prompt:
-
-```text
-Return ONLY valid JSON in the format {"score": 85, "reason": "Knows React and SQLite"}.
-Score this job listing against the CV below on a scale of 0 to 100.
-```
-
-6. Update Row: `UPDATE jobs SET description = ?, ai_score = ?, ai_reason = ?, status = ? WHERE id = ?`.
+### Stage 2: Background Scraping & Processing (n8n Worker)
+When the worker runs, it processes the funnel incrementally:
+1. **Shallow Scraping:** Fetch job URLs from sitemaps (`justjoin.it/robots.txt`, `rocketjobs.pl/robots.txt`). Save to the `jobs` table with `status = 'shallow'`. Ironclad deduplication happens here (skip known URLs).
+2. **Initial Hard Filtering:** Apply `filters_json` against the `shallow` data. Update non-matching to `rejected_shallow`.
+3. **Deep Scraping:** HTTP GET the full HTML *only* for `shallow` jobs that passed the hard filter. Extract the description div, strip HTML to plain text. Update to `status = 'deep'`.
+4. **Second Hard Filtering:** Run regex and keyword filters against the full job descriptions. Non-matches become `rejected_deep`. Survivors become `unscored`.
+5. **First AI Pass (Scoring):** Route `unscored` jobs to the active LLM to score against the CV.
    - If `ai_score >= 65`, set `status = 'new'`.
-   - If `ai_score < 65`, set `status = 'auto_rejected'`.
-7. Done: Final node executes `UPDATE settings SET last_sync_status = 'completed'`.
+   - If `ai_score < 65`, set `status = 'rejected_deep'`.
 
-### Step 5: Casino Screen
-
+### Stage 3: Casino Screen
 The Casino Screen shows one large job card at a time.
-
-Read query:
-```sql
-SELECT * FROM jobs WHERE status = 'new' AND ai_score >= 65 ORDER BY ai_score DESC
-```
-
-Each card displays: title, company, salary range, and an AI insight section showing `ai_score` and `ai_reason`.
-
+Read query: `SELECT * FROM jobs WHERE status = 'new' AND ai_score >= 65 ORDER BY ai_score DESC`
 Controls:
-- `←` (left arrow): reject — Server Action sets `status = 'rejected'`.
-- `→` (right arrow): gem — Server Action sets `status = 'gem'`.
+- `←` (left arrow): reject — sets `status = 'rejected_swipe'`.
+- `→` (right arrow): gem — sets `status = 'gem'`.
 
-Both actions use optimistic UI updates: the next card loads from a pre-fetched local array with zero visible delay.
-Card exit animations use Framer Motion or HeroUI CSS transitions.
-
-### Step 6: Gems Table and Second AI Pass
-
-The Gems Table shows all jobs where `status = 'gem'` in a full HeroUI Table component.
-
+### Stage 4: Gems Table and Second AI Pass
+The Gems Table shows all jobs where `status = 'gem'`.
 The Second AI Pass feature:
-- Generates a personalized recruiter message for a specific job.
-- Is intentionally triggered manually, not automatically.
-- Reason: preserve API credits — the second pass uses a heavier model such as GPT-4o or Gemini Pro.
-- Flow: user clicks a toggle on the job row → Next.js Route Handler fetches the job data and CV from SQLite → calls the premium model API → returns text into an editable textarea → user copies and the status updates to `applied`.
+- Uses a heavier/premium model (GPT-4o or Gemini Pro) to evaluate the best offers.
+- Intentionally triggered manually to preserve API credits.
+- Generates a highly personalized **recruiter message**.
+- Generates a **new custom 'summary' section** tailored perfectly to that specific offer for the user's CV.
 
 ## Repository Structure
 
 ```text
 gem-hunter-2/
-├── .github/              # Issue templates, GitHub Actions
+├── .github/              
 ├── launcher/             # Python launcher and packaging
-│   ├── assets/           # icon.ico and other assets
-│   ├── GemHunter.py      # Main CustomTkinter launcher script
-│   └── requirements.txt  # Python dependencies
+│   ├── assets/           
+│   ├── GemHunter.py      
+│   └── requirements.txt  
 ├── n8n/
-│   ├── backups/          # Exported n8n workflow .json files (commit these)
+│   ├── backups/          
 │   └── .gitignore
 ├── src/
 │   ├── app/              # Next.js App Router
-│   │   ├── api/          # Route Handlers
+│   │   ├── api/          
 │   │   ├── dashboard/
 │   │   ├── onboarding/
-│   │   ├── swipe/        # Casino Screen
-│   │   ├── gems/         # Gems Table
+│   │   ├── swipe/        
+│   │   ├── gems/         
 │   │   ├── layout.tsx
 │   │   └── page.tsx
 │   ├── components/
-│   │   ├── ui/           # HeroUI-based components
-│   │   └── shared/       # Custom cards, progress elements
+│   │   ├── ui/           
+│   │   └── shared/       
 │   ├── db/
-│   │   ├── schema.ts     # Drizzle schema for settings and jobs
-│   │   └── index.ts      # SQLite connection
+│   │   ├── schema.ts     
+│   │   └── index.ts      
 │   └── lib/
-│       ├── llm-utils.ts  # Second AI Pass logic
-│       └── utils.ts      # General utilities
+│       ├── llm-utils.ts  
+│       └── utils.ts      
 ├── .env.example
-├── .gitignore            # Must include: node_modules, .next, database.sqlite, n8n_data/
+├── .gitignore            
 ├── docker-compose.yml
 ├── drizzle.config.ts
 ├── next.config.ts
@@ -217,29 +170,6 @@ gem-hunter-2/
 ├── tailwind.config.ts
 └── README.md
 ```
-
-## Naming Conventions
-
-Use these names consistently. Never use synonyms for the same concept.
-
-| Canonical name | Means |
-|---|---|
-| Casino Screen | The swipe-style job review screen under `/swipe` |
-| Second AI Pass | The manual recruiter message generator in the Gems Table |
-| Worker | n8n (v1 only — may change in future versions) |
-| Settings | The single-row configuration table |
-| Gem | A job saved with `status = 'gem'` |
-| Route Handler | Next.js App Router API handler under `app/api` |
-| Server Action | Next.js mutation function called from client components |
-
-## HeroUI AI Resources
-
-HeroUI v3 provides agent-compatible documentation. Use these when working on UI:
-
-- llms.txt (structured for LLM consumption): https://v3.heroui.com/docs/react/getting-started/llms-txt
-- MCP Server: https://v3.heroui.com/docs/react/getting-started/mcp-server
-- Agent Skills: https://v3.heroui.com/docs/react/getting-started/agent-skills
-- agents.md (component guidance for agents): https://v3.heroui.com/docs/react/getting-started/agents-md
 
 ## Agent Behavior
 
@@ -254,18 +184,6 @@ HeroUI v3 provides agent-compatible documentation. Use these when working on UI:
 7. Flag any library addition with a reason.
 8. Ask before making large structural changes or refactors.
 
-### Output format
-
-Every response should follow this structure:
-1. One-sentence summary of what is about to happen.
-2. List of files to create or edit.
-3. The actual code.
-4. Short reason why.
-5. Clear next suggested step.
-
-If a task is ambiguous: ask one short clarifying question, or propose two options and recommend one.
-If a task is large: split it into phases and start with the smallest working implementation.
-
 ### Decision defaults
 
 When requirements are unclear, prefer:
@@ -275,33 +193,23 @@ When requirements are unclear, prefer:
 - Working feature over speculative optimization.
 - Explicit naming over terse naming.
 
-### MCP usage
-
-Use available MCP servers when they improve correctness or save time.
-
-- GitHub MCP: inspect repo structure, check existing files.
-- Context7 MCP: look up current documentation before implementing anything version-sensitive.
-- HeroUI MCP: all component implementation, patterns, and UI questions.
-- Filesystem MCP (if available): read and edit local project files directly.
-- SQLite MCP (if available): inspect schema, run queries, debug data issues.
-- Playwright MCP: test UI behavior and verify component rendering.
-
 ## Build Phases
 
 | Phase | Scope | Weeks |
 |---|---|---|
 | 1 | Repo setup, Next.js + HeroUI shell, Drizzle schema, docker compose | 1–2 |
 | 2 | Python launcher (.exe), PyInstaller, Docker checking & polling, Walking Skeleton | 3–4 |
-| 3 | Onboarding flow, CV parsing, Settings page, dashboard shell | 5–6 |
-| 4 | n8n webhook, shallow scraping, deduplication, deep scraping, AI scoring, bulk insert | 7–9 |
-| 5 | Search trigger, Casino Screen wired to DB, Gems Table, Second AI Pass, edge cases, release | 10–12 |
+| 3 | Onboarding flow, CV parsing, Settings page, UI-driven Instant Filtering | 5–6 |
+| 4 | n8n worker pipeline (decoupled scraping, deep scraping, AI scoring) | 7–9 |
+| 5 | Search trigger, Casino Screen wired to DB, Gems Table, Second AI Pass | 10–12 |
 
 ## Definition of Done for v1
 
 - [ ] App starts from `GemHunter.exe` with one double-click and opens in the browser.
 - [ ] Onboarding extracts CV text from a standard PDF and saves all settings.
-- [ ] Worker pipeline runs asynchronously after a manual button press.
+- [ ] Filters are easily changed in the UI and apply instantly to local database without re-scraping.
+- [ ] Worker pipeline runs asynchronously, executing the multi-stage filter pipeline.
 - [ ] Deduplication is strict — no URL is ever sent to a paid AI API more than once.
 - [ ] Casino Screen swipe decisions write instantly with zero visible loading.
-- [ ] Gems Table shows saved jobs and supports the Second AI Pass.
-- [ ] Repository has a flawless English "Read Me First" guide explaining the Docker requirement, how to safely bypass Windows Defender for the `.exe`, and the architecture.
+- [ ] Gems Table shows saved jobs and supports the premium Second AI Pass (Message + CV Summary).
+- [ ] Repository has a clean "Read Me First" guide explaining the Docker requirement and architecture.
