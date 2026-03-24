@@ -12,12 +12,17 @@ $ExeTo = Join-Path $ProjectRoot $ExeName
 Write-Host "Launcher dir: $LauncherDir"
 Write-Host "Project root: $ProjectRoot"
 
+$PyInstallerExe = Join-Path $LauncherDir ".venv\Scripts\pyinstaller.exe"
+if (-not (Test-Path $PyInstallerExe)) {
+    $PyInstallerExe = "pyinstaller"
+}
+
 Push-Location $LauncherDir
 try {
     if (Test-Path $DistDir) { Remove-Item $DistDir -Recurse -Force }
     if (Test-Path $BuildDir) { Remove-Item $BuildDir -Recurse -Force }
 
-    pyinstaller --noconfirm --onefile --windowed --name GemHunter GemHunter.py
+    & $PyInstallerExe --noconfirm --onefile --windowed --name GemHunter GemHunter.py
 
     if (-not (Test-Path $ExeFrom)) {
         throw "Build failed: $ExeFrom not found."

@@ -7,6 +7,9 @@ export const settings = sqliteTable("settings", {
   cv_text: text("cv_text"),
   filters_json: text("filters_json"),
   last_sync_status: text("last_sync_status").default("idle"),
+  finished_onboarding: integer("finished_onboarding", { mode: "boolean" })
+    .notNull()
+    .default(false),
 });
 
 export const jobs = sqliteTable("jobs", {

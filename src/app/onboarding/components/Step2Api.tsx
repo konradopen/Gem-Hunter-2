@@ -10,21 +10,21 @@ export function Step2Api({ apiKey, updateForm }: Step2Props) {
     <div className="flex flex-col space-y-6 py-4">
       <div className="space-y-2">
         <h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">
-          Klucz API AI
+          AI API key
         </h2>
         <p className="text-zinc-600 dark:text-zinc-400">
-          Gem Hunter używa OpenRouter.ai, aby analizować oferty. Dlaczego? Bo to
-          daje dostęp do setek modeli (w tym darmowych!).
+          Gem Hunter uses OpenRouter.ai to analyze job offers and gives you
+          access to a wide range of models, including free options.
         </p>
       </div>
 
       <div className="bg-blue-50 dark:bg-blue-950/30 p-4 rounded-xl text-sm border border-blue-100 dark:border-blue-900/50">
         <p className="text-blue-800 dark:text-blue-300 font-medium mb-1">
-          Jak zdobyć klucz?
+          How to get your key
         </p>
         <ol className="list-decimal pl-5 space-y-1 text-blue-700 dark:text-blue-400">
           <li>
-            Wejdź na{" "}
+            Go to{" "}
             <a
               href="https://openrouter.ai/keys"
               target="_blank"
@@ -34,13 +34,13 @@ export function Step2Api({ apiKey, updateForm }: Step2Props) {
               openrouter.ai/keys
             </a>
           </li>
-          <li>Zaloguj się lub stwórz konto</li>
-          <li>Kliknij "Create Key" i skopiuj go tutaj</li>
+          <li>Sign in or create an account</li>
+          <li>Click &quot;Create Key&quot; and paste it here</li>
         </ol>
       </div>
 
       <TextField className="w-full">
-        <Label>Klucz API OpenRouter</Label>
+        <Label>OpenRouter API key</Label>
         <Input
           type="password"
           placeholder="sk-or-v1-..."
@@ -51,8 +51,7 @@ export function Step2Api({ apiKey, updateForm }: Step2Props) {
           }}
         />
         <Description>
-          Klucz jest bezpieczny - będzie zapisany tylko lokalnie w Twojej bazie
-          SQLite na komputerze.
+          Your key is stored locally in your SQLite database on this machine.
         </Description>
       </TextField>
     </div>

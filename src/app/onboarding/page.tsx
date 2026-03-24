@@ -3,17 +3,16 @@ import { Step1Welcome } from "./components/Step1Welcome";
 import { Step2Api } from "./components/Step2Api";
 import { Step3CV } from "./components/Step3CV";
 import { Step4Filters } from "./components/Step4Filters";
+import { Step5Success } from "./components/Step5Success";
 
 import { useEffect, useRef, useState, useActionState } from "react";
 import { saveOnboardingState } from "../actions/settings";
 
-import Image from "next/image";
-
 import { ProgressBar, Button, Spinner } from "@heroui/react";
 
 export default function OnboardingPage() {
-  // Step 5 = success screen (final CTA triggers submit)
   const LAST_WIZARD_STEP = 5;
+  const TOTAL_CONFIG_STEPS = 4;
 
   const [step, setStep] = useState(1);
   const [renderedStep, setRenderedStep] = useState(1);
@@ -37,8 +36,7 @@ export default function OnboardingPage() {
     setFormData((prev) => ({ ...prev, [key]: value }));
   };
 
-  // Prevent "page" scroll; keep scroll contained to inner step content.
-  // (This avoids the weird empty scroll you noticed on step 4.)
+  // Keep browser page scrolling disabled while the wizard is visible.
   useEffect(() => {
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -47,21 +45,16 @@ export default function OnboardingPage() {
     };
   }, []);
 
-  // Transitions WITHOUT setState in effects:
-  // We trigger the transition directly inside the navigation handlers.
   const goToStep = (next: number) => {
     if (transitionTimeoutRef.current) {
       window.clearTimeout(transitionTimeoutRef.current);
     }
 
-    // start exit
     setIsTransitioning(true);
 
     transitionTimeoutRef.current = window.setTimeout(() => {
-      // swap content while still "hidden"
       setRenderedStep(next);
 
-      // next frame: enter
       window.requestAnimationFrame(() => {
         setIsTransitioning(false);
       });
@@ -78,7 +71,10 @@ export default function OnboardingPage() {
     goToStep(Math.max(step - 1, 1));
   };
 
-  const progressValue = renderedStep >= 4 ? 100 : (renderedStep / 4) * 100;
+  const completedSteps = Math.max(0, Math.min(renderedStep - 1, TOTAL_CONFIG_STEPS));
+  const progressValue = (completedSteps / TOTAL_CONFIG_STEPS) * 100;
+  const shouldShowProgress =
+    renderedStep > 1 && renderedStep < LAST_WIZARD_STEP;
   const canGoBack = renderedStep > 1 && renderedStep < LAST_WIZARD_STEP;
 
   return (
@@ -104,27 +100,24 @@ export default function OnboardingPage() {
           value={formData.preferredKeywords}
         />
 
-        {/* Pasek postępu - HeroUI v3 Style */}
-        <div className="flex flex-col gap-2">
-          <div className="flex justify-between text-sm text-zinc-500 font-medium">
-            <span>
-              {renderedStep < LAST_WIZARD_STEP
-                ? `Krok ${renderedStep} z 4`
-                : "Gotowe"}
-            </span>
-            <span>{Math.round(progressValue)}%</span>
+        {shouldShowProgress && (
+          <div className="flex flex-col gap-2">
+            <div className="flex justify-between text-sm text-zinc-500 font-medium">
+              <span>{`Step ${Math.min(renderedStep, TOTAL_CONFIG_STEPS)} of ${TOTAL_CONFIG_STEPS}`}</span>
+              <span>{Math.round(progressValue)}%</span>
+            </div>
+            <ProgressBar
+              aria-label="Onboarding progress"
+              value={progressValue}
+              color="success"
+              size="sm"
+            >
+              <ProgressBar.Track className="bg-zinc-100 dark:bg-zinc-800">
+                <ProgressBar.Fill />
+              </ProgressBar.Track>
+            </ProgressBar>
           </div>
-          <ProgressBar
-            aria-label="Postęp onboardingu"
-            value={progressValue}
-            color="success"
-            size="sm"
-          >
-            <ProgressBar.Track className="bg-zinc-100 dark:bg-zinc-800">
-              <ProgressBar.Fill />
-            </ProgressBar.Track>
-          </ProgressBar>
-        </div>
+        )}
 
         <div className="min-h-0 flex flex-col justify-center">
           <div
@@ -143,49 +136,24 @@ export default function OnboardingPage() {
             {renderedStep === 4 && (
               <Step4Filters formData={formData} updateForm={updateForm} />
             )}
-            {renderedStep === 5 && (
-              <div className="flex flex-col items-center text-center space-y-4 py-10">
-                <div className="text-4xl" aria-hidden="true">
-                  🎉
-                </div>
-
-                <div className="relative h-16 w-16">
-                  <Image
-                    src="/gem.svg"
-                    alt="Gem Hunter Logo"
-                    fill
-                    className="object-contain drop-shadow"
-                    priority
-                  />
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <div className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">
-                    Onboarding ukończony!
-                  </div>
-                </div>
-                <p className="text-zinc-600 dark:text-zinc-400 max-w-md">
-                  Wszystko gotowe. Gem Hunter jest skonfigurowany — czas znaleźć
-                  perełki.
-                </p>
-                <p className="text-sm text-zinc-500 dark:text-zinc-500">
-                  Kliknij „Zaczynamy!”, aby przejść do Dashboardu.
-                </p>
-              </div>
-            )}
+            {renderedStep === 5 && <Step5Success />}
           </div>
         </div>
 
         <div className="flex justify-between mt-4 border-t border-zinc-100 dark:border-zinc-800 pt-6">
-          <Button
-            key="prev-btn"
-            type="button"
-            onPress={prevStep}
-            isDisabled={!canGoBack || isPending}
-            variant="secondary"
-          >
-            Wstecz
-          </Button>
+          {canGoBack ? (
+            <Button
+              key="prev-btn"
+              type="button"
+              onPress={prevStep}
+              isDisabled={isPending}
+              variant="secondary"
+            >
+              Back
+            </Button>
+          ) : (
+            <div />
+          )}
 
           {renderedStep < 4 ? (
             <Button
@@ -195,7 +163,7 @@ export default function OnboardingPage() {
               variant="primary"
               isDisabled={isPending}
             >
-              Dalej
+              Next
             </Button>
           ) : renderedStep === 4 ? (
             <Button
@@ -205,7 +173,7 @@ export default function OnboardingPage() {
               variant="primary"
               isDisabled={isPending}
             >
-              Zakończ konfigurację
+              Complete setup
             </Button>
           ) : (
             <Button
@@ -218,7 +186,7 @@ export default function OnboardingPage() {
               {({ isPending }) => (
                 <>
                   {isPending ? <Spinner color="current" size="sm" /> : null}
-                  Zaczynamy!
+                  Start
                 </>
               )}
             </Button>

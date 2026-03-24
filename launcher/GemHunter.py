@@ -14,19 +14,24 @@ from pathlib import Path
 
 import psutil
 import requests
+from diagnostics import build_user_report, get_log_path, write_event, write_exception
 
 APP_URL = "http://localhost:3000"
 LOCK_FILE = Path(tempfile.gettempdir()) / "gem_hunter_launcher.lock"
+DOCKER_INSTALL_URL = "https://www.docker.com/products/docker-desktop/"
+NODE_INSTALL_URL = "https://nodejs.org/en/download"
 
 
 def _fatal(message: str) -> None:
+    write_event(level="error", error_code="LAUNCHER_FATAL", message=message)
     try:
         import tkinter as tk
         from tkinter import messagebox
 
         root = tk.Tk()
         root.withdraw()
-        messagebox.showerror("Gem Hunter Launcher — Error", message)
+        user_message = build_user_report(message, "LAUNCHER_FATAL")
+        messagebox.showerror("Gem Hunter Launcher — Error", user_message)
         root.destroy()
     except Exception:
         print(message, file=sys.stderr)
@@ -101,6 +106,18 @@ def _is_port_open(port: int, host: str = "127.0.0.1", timeout_s: float = 0.5) ->
         return False
 
 
+def _process_name_on_port(port: int) -> str | None:
+    try:
+        for conn in psutil.net_connections(kind="inet"):
+            if not conn.laddr or conn.laddr.port != port or not conn.pid:
+                continue
+            proc = psutil.Process(conn.pid)
+            return (proc.name() or "").lower()
+    except Exception:
+        return None
+    return None
+
+
 def _windows_subprocess_kwargs() -> dict:
     if os.name != "nt":
         return {}
@@ -116,26 +133,52 @@ def _windows_subprocess_kwargs() -> dict:
 
 def run_silent(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
     kwargs = _windows_subprocess_kwargs()
-    return subprocess.run(
-        command,
-        cwd=str(cwd),
-        capture_output=True,
-        text=True,
-        shell=False,
-        **kwargs,
-    )
+    command_text = " ".join(command)
+    try:
+        result = subprocess.run(
+            command,
+            cwd=str(cwd),
+            capture_output=True,
+            text=True,
+            shell=False,
+            timeout=45,
+            **kwargs,
+        )
+    except FileNotFoundError as exc:
+        write_exception("COMMAND_NOT_FOUND", f"Missing command: {command_text}", exc)
+        raise
+    except subprocess.TimeoutExpired as exc:
+        write_exception("COMMAND_TIMEOUT", f"Timed out command: {command_text}", exc)
+        raise
+
+    if result.returncode != 0:
+        details = (result.stderr or result.stdout or "").strip()
+        write_event(
+            level="warning",
+            error_code="COMMAND_FAILED",
+            message=f"Command returned non-zero exit: {command_text}",
+            command=command_text,
+            exit_code=result.returncode,
+            details=details,
+        )
+    return result
 
 
 def popen_silent(command: list[str], cwd: Path) -> subprocess.Popen:
     kwargs = _windows_subprocess_kwargs()
-    return subprocess.Popen(
-        command,
-        cwd=str(cwd),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        shell=False,
-        **kwargs,
-    )
+    command_text = " ".join(command)
+    try:
+        return subprocess.Popen(
+            command,
+            cwd=str(cwd),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            shell=False,
+            **kwargs,
+        )
+    except FileNotFoundError as exc:
+        write_exception("COMMAND_NOT_FOUND", f"Missing command: {command_text}", exc)
+        raise
 
 
 class SingleInstanceLock:
@@ -249,10 +292,19 @@ class LauncherApp(ctk.CTk):
         self.append_log("Launcher ready.")
         self.append_log(f"Using project root: {self.project_root}")
         self.append_log(f"Using compose file: {self.compose_file}")
+        self.append_log(f"Diagnostics log: {get_log_path()}")
 
         # If app already running, do NOT auto-open browser. Only mark ready.
         if _is_port_open(3000):
-            self._mark_ready_ui(already_running=True)
+            pname = _process_name_on_port(3000) or ""
+            if "node" in pname or "npm" in pname:
+                self._mark_ready_ui(already_running=True)
+            else:
+                self.append_log(
+                    "Port 3000 is already in use by another process. "
+                    "Please stop that process or change its port."
+                )
+                self.set_status("Port 3000 conflict")
 
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         atexit.register(self._cleanup_on_exit)
@@ -351,6 +403,18 @@ class LauncherApp(ctk.CTk):
 
     def _run_start_background(self) -> None:
         try:
+            if not shutil.which("docker"):
+                self.after(0, lambda: self.append_log("Docker CLI not found in PATH."))
+                self.after(0, lambda: self.append_log(f"Install Docker Desktop: {DOCKER_INSTALL_URL}"))
+                self.after(0, lambda: self.set_status("Docker Desktop is not installed"))
+                self.after(0, lambda: self.start_btn.configure(state="normal"))
+                write_event(
+                    level="error",
+                    error_code="DOCKER_NOT_INSTALLED",
+                    message="Docker command missing in PATH",
+                )
+                return
+
             docker_info = run_silent(["docker", "info"], cwd=self.project_root)
             if docker_info.returncode != 0:
                 details = (
@@ -358,6 +422,7 @@ class LauncherApp(ctk.CTk):
                 ).strip()
                 self.after(0, lambda: self.append_log("Docker: NOT AVAILABLE"))
                 self.after(0, lambda: self.append_log(details))
+                self.after(0, lambda: self.append_log("Start Docker Desktop, wait a moment, then retry."))
                 self.after(0, lambda: self.set_status("Docker not available"))
                 self.after(0, lambda: self.start_btn.configure(state="normal"))
                 return
@@ -400,7 +465,19 @@ class LauncherApp(ctk.CTk):
             self.after(0, lambda: self.append_log("n8n started"))
 
             if _is_port_open(3000):
-                self.after(0, lambda: self._mark_ready_ui(already_running=True))
+                pname = _process_name_on_port(3000) or ""
+                if "node" in pname or "npm" in pname:
+                    self.after(0, lambda: self._mark_ready_ui(already_running=True))
+                    return
+                self.after(
+                    0,
+                    lambda: self.append_log(
+                        "Port 3000 is occupied by a non-Node process. "
+                        "Cannot safely start Gem Hunter."
+                    ),
+                )
+                self.after(0, lambda: self.set_status("Port 3000 conflict"))
+                self.after(0, lambda: self.start_btn.configure(state="normal"))
                 return
 
             self.after(0, lambda: self.set_status("Starting app (npm run dev)…"))
@@ -414,9 +491,37 @@ class LauncherApp(ctk.CTk):
             npm_path = _find_npm_executable()
             if not npm_path:
                 self.after(0, lambda: self.append_log("npm: command not found in PATH"))
+                self.after(0, lambda: self.append_log(f"Install Node.js (includes npm): {NODE_INSTALL_URL}"))
                 self.after(0, lambda: self.set_status("Node.js not available"))
                 self.after(0, lambda: self.start_btn.configure(state="normal"))
+                write_event(
+                    level="error",
+                    error_code="NODE_NOT_INSTALLED",
+                    message="npm command missing in PATH",
+                )
                 return
+
+            node_modules_dir = self.project_root / "node_modules"
+            if not node_modules_dir.exists():
+                self.after(0, lambda: self.set_status("Installing app dependencies (npm install)…"))
+                self.after(0, lambda: self.append_log("node_modules not found. Running npm install once..."))
+                install_result = run_silent([npm_path, "install"], cwd=self.project_root)
+                if install_result.returncode != 0:
+                    details = (
+                        install_result.stderr or install_result.stdout or "npm install failed"
+                    ).strip()
+                    self.after(0, lambda: self.append_log("npm install: FAILED"))
+                    self.after(0, lambda: self.append_log(details))
+                    self.after(0, lambda: self.set_status("npm install failed"))
+                    self.after(0, lambda: self.start_btn.configure(state="normal"))
+                    write_event(
+                        level="error",
+                        error_code="NPM_INSTALL_FAILED",
+                        message="npm install failed during startup preflight",
+                        details=details,
+                    )
+                    return
+                self.after(0, lambda: self.append_log("npm install: OK"))
 
             self.npm_process = popen_silent(
                 [npm_path, "run", "dev"], cwd=self.project_root
@@ -455,11 +560,27 @@ class LauncherApp(ctk.CTk):
             self.after(
                 0, lambda: self.append_log(f"App: TIMEOUT (last error: {last_error})")
             )
+            write_event(
+                level="error",
+                error_code="APP_HEALTH_TIMEOUT",
+                message="App did not return HTTP 200 in startup window",
+                details=last_error,
+            )
             self.after(0, lambda: self.set_status("Timed out"))
             self.after(0, lambda: self.start_btn.configure(state="normal"))
 
         except Exception as e:
+            write_exception("START_FLOW_EXCEPTION", "Unhandled launcher start exception", e)
             self.after(0, lambda: self.append_log(f"Launcher error: {e}"))
+            self.after(
+                0,
+                lambda: self.append_log(
+                    build_user_report(
+                        "Start flow failed.",
+                        "START_FLOW_EXCEPTION",
+                    )
+                ),
+            )
             self.after(0, lambda: self.set_status("Error"))
             self.after(0, lambda: self.start_btn.configure(state="normal"))
         finally:
@@ -476,6 +597,7 @@ class LauncherApp(ctk.CTk):
             self.open_btn.configure(state="disabled")
             self.stop_btn.configure(state="disabled")
         except Exception as e:
+            write_exception("STOP_FLOW_EXCEPTION", "Unhandled launcher stop exception", e)
             self.append_log(f"Stop error: {e}")
             self.set_status("Stop failed")
             self.stop_btn.configure(state="normal")

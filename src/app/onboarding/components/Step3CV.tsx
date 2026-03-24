@@ -5,11 +5,10 @@ export function Step3CV() {
     <div className="flex flex-col space-y-6 py-4">
       <div className="space-y-2">
         <h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">
-          Twoje CV
+          Your CV
         </h2>
         <p className="text-zinc-600 dark:text-zinc-400">
-          Gem Hunter używa Twojego CV, żeby oceniać, jak dobrze pasujesz do
-          danej oferty pracy.
+          Gem Hunter uses your CV to evaluate how well you match each job.
         </p>
       </div>
 
@@ -19,30 +18,28 @@ export function Step3CV() {
       >
         <Card.Header>
           <Card.Title className="text-indigo-900 dark:text-indigo-300">
-            Gdzie dodam swoje CV?
+            Where do I add my CV?
           </Card.Title>
         </Card.Header>
         <Card.Content className="text-zinc-700 dark:text-zinc-300 space-y-3">
           <p>
-            Aby ułatwić i przyspieszyć start aplikacji, zarządzanie CV zostało
-            przeniesione bezpośrednio do <strong>Ustawień Dashboardu</strong>.
+            To keep onboarding fast and focused, CV management is handled in{" "}
+            <strong>Dashboard Settings</strong>.
           </p>
           <ul className="list-disc pl-5 space-y-1 text-sm">
-            <li>Kiedy skończysz Onboarding, trafisz na Główny Panel.</li>
+            <li>After onboarding, you will land on the dashboard.</li>
             <li>
-              Wejdziesz tam w zakładkę <strong>Ustawienia</strong>.
+              Open the <strong>Settings</strong> section.
             </li>
             <li>
-              Tam czeka na Ciebie wygodny panel: wrzucisz plik PDF lub po prostu
-              wkleisz tekst ze swojego profilu LinkedIn.
+              Upload a PDF or paste text from your LinkedIn profile there.
             </li>
           </ul>
         </Card.Content>
       </Card>
 
       <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400 text-center mt-4">
-        Kliknij "Dalej", aby przejść do najważniejszego kroku — konfiguracji
-        Twoich filtrów.
+        Click &quot;Next&quot; to continue to filter setup.
       </p>
     </div>
   );

@@ -21,6 +21,37 @@ You need Node.js to run the Next.js app locally (Phase 1). Any reasonably recent
 
 ---
 
+## 📦 Windows Installer (MVP)
+
+Gem Hunter now includes an installer path for easier sharing on Windows.
+
+- Build launcher executable:
+  - `powershell -ExecutionPolicy Bypass -File launcher/build.ps1`
+- Build installer (requires Inno Setup 6):
+  - `powershell -ExecutionPolicy Bypass -File launcher/build-installer.ps1`
+
+Installer script location:
+- `launcher/installer/GemHunter.iss`
+
+Important:
+- The installer does not silently install Docker or Node.
+- On missing dependencies, launcher shows guided instructions and official links.
+
+Diagnostics log path:
+- `%LOCALAPPDATA%\GemHunter\logs\launcher.log`
+
+Validation checklist before sharing:
+- Build launcher: `powershell -ExecutionPolicy Bypass -File launcher/build.ps1`
+- Build installer: `powershell -ExecutionPolicy Bypass -File launcher/build-installer.ps1`
+- Install silently (CI-friendly): `launcher/dist-installer/GemHunter-Setup.exe /SP- /VERYSILENT /NORESTART /LOG=install.log`
+- Start launcher and verify it stays open.
+- Click `Start Services` and verify:
+  - missing Docker/Node shows guided messages
+  - port 3000 conflict is detected clearly
+  - successful path reaches `http://localhost:3000`
+
+---
+
 ## ⚡ Quickstart (Development)
 
 From the repo root:
@@ -132,6 +163,16 @@ Logs:
 ### App doesn’t open on :3000
 Run:
 - `npm run dev`
+
+### Port 3000 conflict
+If launcher reports a port conflict, another process is using `:3000`.
+
+- Check listeners and stop the conflicting process.
+- Restart the launcher and click `Start Services` again.
+
+### Launcher diagnostics
+If startup fails, collect:
+- `%LOCALAPPDATA%\GemHunter\logs\launcher.log`
 
 ---
 

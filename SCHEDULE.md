@@ -30,7 +30,7 @@ This file tracks the daily tasks for the 12-week build plan. Agents should use t
 
 ## Week 5 & 6: Phase 3 (Onboarding & UI Instant Filtering)
 - [X] W5D1 - Phase 3 - Onboarding wizard UI & form state
-- [ ] W5D2 - Phase 3 - Next.js Middleware settings check & redirect
+- [x] W5D2 - Phase 3 - Next.js Middleware settings check & redirect
 - [ ] W5D3 - Phase 3 - PDF CV upload component
 - [ ] W5D4 - Phase 3 - CV extraction Route Handler & User Textarea Review
 - [x] W5D5 - Phase 3 - Save settings to SQLite via Drizzle UPSERT

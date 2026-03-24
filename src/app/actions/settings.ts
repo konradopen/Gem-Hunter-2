@@ -2,9 +2,10 @@
 
 import { db } from "@/db";
 import { settings } from "@/db/schema";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-export async function saveOnboardingState(prevState: any, formData: FormData) {
+export async function saveOnboardingState(_prevState: unknown, formData: FormData) {
   try {
     const apiKey = (formData.get("apiKey") as string) || "";
     const allowedCities = (formData.get("allowedCities") as string) || "";
@@ -31,6 +32,7 @@ export async function saveOnboardingState(prevState: any, formData: FormData) {
         cv_text: "",
         filters_json: filtersJson,
         last_sync_status: "idle",
+        finished_onboarding: true,
       })
       .onConflictDoUpdate({
         target: settings.id,
@@ -38,11 +40,19 @@ export async function saveOnboardingState(prevState: any, formData: FormData) {
           active_llm: "openrouter",
           api_key: apiKey,
           filters_json: filtersJson,
+          finished_onboarding: true,
         },
       });
+
+    // Middleware hint; server-side DB remains source of truth.
+    (await cookies()).set("finishedOnboarding", "1", {
+      path: "/",
+      sameSite: "lax",
+      httpOnly: true,
+    });
   } catch (error) {
     console.error("Error saving settings:", error);
-    return { error: "Wystąpił błąd podczas zapisywania ustawień." };
+    return { error: "There was an error while saving settings." };
   }
 
   // Redirect to dashboard on success (must be outside try-catch because redirect throws internally)

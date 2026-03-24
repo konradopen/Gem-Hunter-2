@@ -1,4 +1,19 @@
-export default function DashboardPage() {
+import { db } from "@/db";
+import { settings } from "@/db/schema";
+import { eq } from "drizzle-orm";
+import { redirect } from "next/navigation";
+
+export default async function DashboardPage() {
+  const [userSettings] = await db
+    .select({ finished_onboarding: settings.finished_onboarding })
+    .from(settings)
+    .where(eq(settings.id, 1))
+    .limit(1);
+
+  if (!userSettings?.finished_onboarding) {
+    redirect("/onboarding");
+  }
+
   return (
     <main className="min-h-screen w-full bg-zinc-50 dark:bg-zinc-950 p-8">
       <div className="mx-auto w-full max-w-5xl">

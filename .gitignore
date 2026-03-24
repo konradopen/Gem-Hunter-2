@@ -79,3 +79,10 @@ id_ed25519.pub
 
 # temporary clone of gemhunter v1 - remove if its not there anymore.
 /temp_v1/
+
+# installer artifacts
+launcher/dist-installer/
+launcher/dist-installer/*.log
+
+# cursor transient plans
+.cursor/plans/
